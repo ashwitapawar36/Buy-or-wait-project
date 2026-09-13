@@ -139,7 +139,8 @@ class Forecast:
                 self.warnings.append(f'Stale expense history not extrapolated: {rows[-1]["event_id"]}')
                 continue
             amounts=[sum((money(e['amount']) for e in buckets[d.isoformat()]),ZERO) for d in dates]
-            amount=money(median(amounts[-3:]))
+            window = 6 if self.estimator == 'recent-six-median' else 3
+            amount = money(median(amounts[-window:]))
             if self.estimator=='conservative' and len(set(amounts[-3:]))>1:
                 amount=max(amount,amounts[-1])
             last=rows[-1]; anchor=dates[-1]

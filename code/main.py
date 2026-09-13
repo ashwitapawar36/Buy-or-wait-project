@@ -33,7 +33,7 @@ def main(argv=None):
     parser.add_argument('--skip-request', action='append', default=[])
     parser.add_argument('--offline',action='store_true',help='Require existing Gemini evidence cache; no network')
     parser.add_argument('--refresh',action='store_true',help='Ignore old cache and call Gemini again')
-    parser.add_argument('--expense-estimator',choices=['conservative','recent-median'],default='conservative')
+    parser.add_argument('--expense-estimator',choices=['conservative','recent-median','recent-six-median']  ,default='conservative')
     args=parser.parse_args(argv)
     if args.limit is not None and args.limit<1:parser.error('--limit must be positive')
     if args.offline and args.refresh:parser.error('--offline and --refresh conflict')
