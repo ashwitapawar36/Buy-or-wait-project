@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+log.txt
+chat_transcript*.txt
+cache/
+runs/
+submission/
+output.csv
+code/evaluation/final_run.json
+*.zip

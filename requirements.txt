@@ -1,0 +1,2 @@
+# Python 3.10+ only. This project uses the Python standard library.
+# Gemini is called through its HTTPS REST API; no pip dependencies are required.
