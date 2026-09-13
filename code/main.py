@@ -66,11 +66,31 @@ def main(argv=None):
     run_dir=ROOT/'runs'/run_id; run_dir.mkdir(parents=True)
     client=Gemini(dataset,ROOT/'cache',run_dir,args.offline,args.refresh)
     results=[]; error=None
+    needs_review=[]
     try:
         for i,request in enumerate(selected,1):
             print(f'[{i}/{len(selected)}] {request["request_id"]}: interpreting evidence...',flush=True)
             context=dataset.context(request)
-            evidence,cache_key=client.extract(context)
+            try:
+                evidence,cache_key=client.extract(context)
+            except ValueError as exc:
+                detail = str(exc)
+                unresolved_prefixes = (
+                    'Material unresolved evidence:',
+                    'Gemini evidence did not pass validation after repair: Material unresolved evidence:',
+                )
+                if not detail.startswith(unresolved_prefixes):
+                    raise
+
+                needs_review.append({
+                    'request_id': request['request_id'],
+                    'reason': detail,
+                    'payment_recommended': False,
+                    'amount_safe_to_pay': None,
+                })
+                atomic_json(run_dir/'needs_review.json', needs_review)
+                print('  NEEDS REVIEW: ' + detail, flush=True)
+                continue
             forecast=Forecast(dataset,context,evidence,args.expense_estimator)
             row,plan=select_plan(forecast,request,dataset.options[request['request_id']])
             results.append(row)
@@ -85,14 +105,19 @@ def main(argv=None):
             print('  '+row['affordability_status']+' / '+row['recommended_payment_method'],flush=True)
     except (ValueError,OSError,KeyError,TypeError) as exc:
         error=str(exc)
-    complete=not error and is_full and len(results)==len(dataset.tables['requests'])
+    complete = (
+        not error
+        and not needs_review
+        and is_full
+        and len(results) == len(dataset.tables['requests'])
+    )   
     pred=run_dir/'predictions.csv'
     digest=hashlib.sha256(pred.read_bytes()).hexdigest() if pred.exists() else ''
     accounting=write_usage(run_dir/'usage_report.md',client,len(results),complete,run_id,digest)
     manifest={'run_id':run_id,'complete':complete,'sample_run':args.samples,'requested_rows':len(selected),
               'produced_rows':len(results),'dataset_sha256':fingerprint(dataset.folder),
               'output_sha256':digest,'model':client.model,'expense_estimator':args.expense_estimator,
-              'error':error,'accounting':accounting,'cache_keys':[p.stem for p in (ROOT/'cache').glob('*.json')]}
+              'error':error,'needs_review':needs_review,'accounting':accounting,'cache_keys':[p.stem for p in (ROOT/'cache').glob('*.json')]}
     atomic_json(run_dir/'manifest.json',manifest)
     if args.samples and results:
         scores=compare_samples(dataset.tables['sample_requests'],results)
@@ -108,6 +133,13 @@ def main(argv=None):
         print('Stopped safely: '+error,file=sys.stderr)
         print('No incomplete file was published as final output.csv. Fix the issue and rerun; completed evidence is cached.',file=sys.stderr)
         return 1
+
+    if needs_review:
+        print(
+            f'{len(needs_review)} request(s) need review; '
+            'see needs_review.json. No final output was published.'
+        )
+        return 2
     return 0
 
 if __name__=='__main__':
